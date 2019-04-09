@@ -30,6 +30,7 @@ if method_flag == 0:  # LightGBM
             #            'objective': 'multiclass',
             #            'metric': 'multi_logloss',
             'verbosity': -1,
+            'n_estimators': trial.suggest_int('n_estimators', 100, 1000),
             'boosting_type': trial.suggest_categorical('boosting', ['gbdt', 'dart', 'goss']),
             'num_leaves': trial.suggest_int('num_leaves', 10, 1000),
             'learning_rate': trial.suggest_loguniform('learning_rate', 1e-8, 1.0)
@@ -59,6 +60,7 @@ elif method_flag == 1:  # XGBoost
         param = {
             'silent': 1,
             #            'objective': 'binary:logistic',
+            'n_estimators': trial.suggest_int('n_estimators', 100, 1000),
             'booster': trial.suggest_categorical('booster', ['gbtree', 'gblinear', 'dart']),
             'lambda': trial.suggest_loguniform('lambda', 1e-8, 1.0),
             'alpha': trial.suggest_loguniform('alpha', 1e-8, 1.0)
@@ -90,6 +92,7 @@ elif method_flag == 2:  # scikit-learn
 
     def objective(trial):
         param = {
+            'n_estimators': trial.suggest_int('n_estimators', 100, 1000),
             'learning_rate': trial.suggest_loguniform('learning_rate', 0.01, 1),
             'max_depth': trial.suggest_int('max_depth', 1, 9),
             'min_samples_leaf': trial.suggest_int('min_samples_leaf', 3, 20),
