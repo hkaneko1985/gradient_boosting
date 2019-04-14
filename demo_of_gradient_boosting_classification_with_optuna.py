@@ -7,7 +7,7 @@ import optuna
 from sklearn import datasets, model_selection, metrics
 from sklearn.model_selection import train_test_split
 
-method_flag = 2  # 0: LightGBM, 1: XGBoost, 2: scikit-learn
+method_flag = 0  # 0: LightGBM, 1: XGBoost, 2: scikit-learn
 
 number_of_test_samples = 45  # the number of test samples
 fold_number = 2  # "fold_number"-fold cross-validation
@@ -119,7 +119,7 @@ elif method_flag == 1:  # XGBoost
                   eval_set=[(x_validation, y_validation.reshape([len(y_validation), 1]))],
                   eval_metric='mlogloss', early_stopping_rounds=100)
         best_n_estimators = model.best_iteration
-    model = xgb.XGBRegressor(**study.best_params, n_estimators=best_n_estimators)
+    model = xgb.XGBClassifier(**study.best_params, n_estimators=best_n_estimators)
 elif method_flag == 2:  # scikit-learn
     from sklearn.ensemble import GradientBoostingClassifier
 
