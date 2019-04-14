@@ -12,8 +12,10 @@ from sklearn.model_selection import train_test_split
 
 method_flag = 0  # 0: LightGBM, 1: XGBoost, 2: scikit-learn
 
+number_of_test_samples = 150  # the number of test samples
 fold_number = 2  # "fold_number"-fold cross-validation
-number_of_test_samples = 210
+fraction_of_validation_samples = 0.2  # fraction of validation samples for early stopping. If early stopping is not required and the number of sub-models is set, please set this to 0 
+number_of_sub_models = 500  # (This is active only when fraction_of_validation_samples = 0) The number of sub-models 
 
 # load boston dataset
 boston = datasets.load_boston()
@@ -24,16 +26,27 @@ y = boston.target
 x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=number_of_test_samples, random_state=0)
 
 autoscaled_y_train = (y_train - y_train.mean()) / y_train.std()  # autoscaling
+x_train_tmp, x_validation, autoscaled_y_train_tmp, autoscaled_y_validation = train_test_split(x_train,
+                                                                                              autoscaled_y_train,
+                                                                                              test_size=fraction_of_validation_samples,
+                                                                                              random_state=0)
 
-# hypterparameter optimization with optuna and modeling6
+# hyperparameter optimization with optuna and modeling6
 if method_flag == 0:  # LightGBM
     import lightgbm as lgb
+
+    if fraction_of_validation_samples == 0:
+        best_n_estimators_in_cv = number_of_sub_models
+    else:
+        model = lgb.LGBMRegressor(n_estimators=1000)
+        model.fit(x_train_tmp, autoscaled_y_train_tmp, eval_set=(x_validation, autoscaled_y_validation),
+                  eval_metric='l2', early_stopping_rounds=100)
+        best_n_estimators_in_cv = model.best_iteration_
 
 
     def objective(trial):
         param = {
             'verbosity': -1,
-            'n_estimators': trial.suggest_int('n_estimators', 100, 1000),
             'boosting_type': trial.suggest_categorical('boosting', ['gbdt', 'dart', 'goss']),
             'num_leaves': trial.suggest_int('num_leaves', 10, 1000),
             'learning_rate': trial.suggest_loguniform('learning_rate', 1e-8, 1.0)
@@ -46,7 +59,7 @@ if method_flag == 0:  # LightGBM
             param['top_rate'] = trial.suggest_uniform('top_rate', 0.0, 1.0)
             param['other_rate'] = trial.suggest_uniform('other_rate', 0.0, 1.0 - param['top_rate'])
 
-        model = lgb.LGBMRegressor(**param)
+        model = lgb.LGBMRegressor(**param, n_estimators=best_n_estimators_in_cv)
         estimated_y_in_cv = model_selection.cross_val_predict(model, x_train, autoscaled_y_train, cv=fold_number)
         estimated_y_in_cv = estimated_y_in_cv * y_train.std() + y_train.mean()
         r2 = metrics.r2_score(y_train, estimated_y_in_cv)
@@ -55,15 +68,30 @@ if method_flag == 0:  # LightGBM
 
     study = optuna.create_study()
     study.optimize(objective, n_trials=100)
-    model = lgb.LGBMRegressor(**study.best_params)
+    if fraction_of_validation_samples == 0:
+        best_n_estimators = number_of_sub_models
+    else:
+        model = lgb.LGBMRegressor(**study.best_params, n_estimators=1000)
+        model.fit(x_train_tmp, autoscaled_y_train_tmp, eval_set=(x_validation, autoscaled_y_validation),
+                  eval_metric='l2', early_stopping_rounds=100)
+        best_n_estimators = model.best_iteration_
+    model = lgb.LGBMRegressor(**study.best_params, n_estimators=best_n_estimators)
 elif method_flag == 1:  # XGBoost
     import xgboost as xgb
+
+    if fraction_of_validation_samples == 0:
+        best_n_estimators_in_cv = number_of_sub_models
+    else:
+        model = xgb.XGBRegressor(n_estimators=1000)
+        model.fit(x_train_tmp, autoscaled_y_train_tmp,
+                  eval_set=[(x_validation, autoscaled_y_validation.reshape([len(autoscaled_y_validation), 1]))],
+                  eval_metric='rmse', early_stopping_rounds=100)
+        best_n_estimators_in_cv = model.best_iteration
 
 
     def objective(trial):
         param = {
             'silent': 1,
-            'n_estimators': trial.suggest_int('n_estimators', 100, 1000),
             'objective': 'reg:linear',
             'booster': trial.suggest_categorical('booster', ['gbtree', 'gblinear', 'dart']),
             'lambda': trial.suggest_loguniform('lambda', 1e-8, 1.0),
@@ -81,7 +109,7 @@ elif method_flag == 1:  # XGBoost
             param['rate_drop'] = trial.suggest_loguniform('rate_drop', 1e-8, 1.0)
             param['skip_drop'] = trial.suggest_loguniform('skip_drop', 1e-8, 1.0)
 
-        model = xgb.XGBRegressor(**param)
+        model = xgb.XGBRegressor(**param, n_estimators=best_n_estimators_in_cv)
         estimated_y_in_cv = model_selection.cross_val_predict(model, x_train, autoscaled_y_train, cv=fold_number)
         estimated_y_in_cv = estimated_y_in_cv * y_train.std() + y_train.mean()
         r2 = metrics.r2_score(y_train, estimated_y_in_cv)
@@ -91,21 +119,36 @@ elif method_flag == 1:  # XGBoost
     study = optuna.create_study()
     study.optimize(objective, n_trials=100)
 
-    model = xgb.XGBRegressor(**study.best_params)
+    if fraction_of_validation_samples == 0:
+        best_n_estimators = number_of_sub_models
+    else:
+        model = xgb.XGBRegressor(**study.best_params, n_estimators=1000)
+        model.fit(x_train_tmp, autoscaled_y_train_tmp,
+                  eval_set=[(x_validation, autoscaled_y_validation.reshape([len(autoscaled_y_validation), 1]))],
+                  eval_metric='rmse', early_stopping_rounds=100)
+        best_n_estimators = model.best_iteration
+    model = xgb.XGBRegressor(**study.best_params, n_estimators=best_n_estimators)
 elif method_flag == 2:  # scikit-learn
     from sklearn.ensemble import GradientBoostingRegressor
+
+    if fraction_of_validation_samples == 0:
+        best_n_estimators_in_cv = number_of_sub_models
+    else:
+        model = GradientBoostingRegressor(n_estimators=1000, validation_fraction=fraction_of_validation_samples,
+                                          n_iter_no_change=100)
+        model.fit(x_train, autoscaled_y_train)
+        best_n_estimators_in_cv = len(model.estimators_)
 
 
     def objective(trial):
         param = {
-            'n_estimators': trial.suggest_int('n_estimators', 100, 1000),
             'learning_rate': trial.suggest_loguniform('learning_rate', 0.01, 1),
             'max_depth': trial.suggest_int('max_depth', 1, 9),
             'min_samples_leaf': trial.suggest_int('min_samples_leaf', 3, 20),
             'max_features': trial.suggest_loguniform('max_features', 0.1, 1.0)
         }
 
-        model = GradientBoostingRegressor(**param)
+        model = GradientBoostingRegressor(**param, n_estimators=best_n_estimators_in_cv)
         estimated_y_in_cv = model_selection.cross_val_predict(model, x_train, autoscaled_y_train, cv=fold_number)
         estimated_y_in_cv = estimated_y_in_cv * y_train.std() + y_train.mean()
         r2 = metrics.r2_score(y_train, estimated_y_in_cv)
@@ -114,7 +157,14 @@ elif method_flag == 2:  # scikit-learn
 
     study = optuna.create_study()
     study.optimize(objective, n_trials=100)
-    model = GradientBoostingRegressor(**study.best_params)
+    if fraction_of_validation_samples == 0:
+        best_n_estimators = number_of_sub_models
+    else:
+        model = GradientBoostingRegressor(**study.best_params, n_estimators=1000,
+                                          validation_fraction=fraction_of_validation_samples, n_iter_no_change=100)
+        model.fit(x_train, autoscaled_y_train)
+        best_n_estimators = len(model.estimators_)
+    model = GradientBoostingRegressor(**study.best_params, n_estimators=best_n_estimators)
 
 model.fit(x_train, autoscaled_y_train)
 calculated_y_train = model.predict(x_train) * y_train.std() + y_train.mean()

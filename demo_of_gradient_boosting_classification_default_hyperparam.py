@@ -9,7 +9,7 @@ from sklearn.model_selection import train_test_split
 method_flag = 0  # 0: LightGBM, 1: XGBoost, 2: scikit-learn
 
 fold_number = 5  # "fold_number"-fold cross-validation
-number_of_test_samples = 45
+number_of_test_samples = 45  # the number of test samples
 
 # load iris dataset
 iris = datasets.load_iris()
