@@ -6,7 +6,8 @@
 import matplotlib.figure as figure
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn import datasets, model_selection
+import pandas as pd
+from sklearn import model_selection
 from sklearn.model_selection import train_test_split
 
 method_flag = 0  # 0: LightGBM, 1: XGBoost, 2: scikit-learn
@@ -15,9 +16,9 @@ fold_number = 5  # "fold_number"-fold cross-validation
 number_of_test_samples = 150  # the number of test samples
 
 # load boston dataset
-boston = datasets.load_boston()
-x = boston.data
-y = boston.target
+dataset = pd.read_csv('boston.csv', index_col=0)
+y = dataset.iloc[:, 0]
+x = dataset.iloc[:, 1:]
 
 # Divide samples into training samples and test samples
 x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=number_of_test_samples, random_state=0)
